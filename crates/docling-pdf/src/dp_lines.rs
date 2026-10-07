@@ -196,11 +196,14 @@ fn gap_occupied(cells: &[Cell], i: usize, j: usize) -> bool {
     })
 }
 
-/// `applicable_for_merge`: both active and same reading orientation. A different
-/// font normally blocks the merge (keeps a bold label and its value as separate
-/// line cells). On the clean-box parser path, **punctuation/space cells bridge
-/// fonts** so a sentence period set in a separate punctuation font joins its word
-/// instead of fragmenting (`العمل .` → `العمل.`); letters still enforce the font.
+/// `applicable_for_merge`: both active and same reading orientation. In word
+/// mode a different font blocks the merge; in line mode it does not, as in
+/// docling-parse >= 7.21 (#351), whose contractor ignores `enforce_same_font`,
+/// so a phrase that changes font mid-line stays one line cell (`(WRKFCNUSG)`,
+/// not `(` `WRKFCNUSG` `)`). On the clean-box parser path, **punctuation/space
+/// cells bridge fonts** in word mode so a sentence period set in a separate
+/// punctuation font joins its word instead of fragmenting (`العمل .` →
+/// `العمل.`); letters still enforce the font there.
 fn applicable(a: &Cell, b: &Cell, parser: bool, block_spaces: bool) -> bool {
     if !a.active || !b.active {
         return false;
@@ -211,11 +214,11 @@ fn applicable(a: &Cell, b: &Cell, parser: bool, block_spaces: bool) -> bool {
     if block_spaces && (is_all_space(&a.text) || is_all_space(&b.text)) {
         return false;
     }
-    // A lone punctuation glyph (not a space) set in a separate punctuation font
-    // bridges fonts so it joins its word — but only next to RTL text. In LTR a
-    // different-font punctuation (e.g. a bold `:`) is a real run boundary docling
-    // keeps spaced (`Laboratories :`); in Arabic the sentence period sits in a
-    // Latin punctuation font yet attaches (`العمل.`). Parser path only.
+    // Word mode: a lone punctuation glyph (not a space) set in a separate
+    // punctuation font bridges fonts so it joins its word — but only next to RTL
+    // text. In LTR a different-font punctuation (e.g. a bold `:`) stays its own
+    // word; in Arabic the sentence period sits in a Latin punctuation font yet
+    // attaches (`العمل.`). Parser path only.
     let lone_punct = |s: &str| {
         let mut ch = s.chars();
         matches!(ch.next(), Some(c) if c != ' ' && is_punct_or_space(&c.to_string()))
@@ -224,7 +227,8 @@ fn applicable(a: &Cell, b: &Cell, parser: bool, block_spaces: bool) -> bool {
     let punct_bridge =
         parser && ((lone_punct(&a.text) && !b.ltr) || (lone_punct(&b.text) && !a.ltr));
     let font_neutral = a.lig || b.lig || punct_bridge;
-    if a.font != 0 && b.font != 0 && a.font != b.font && !font_neutral {
+    // docling-parse >= 7.21 (#351) ignores fonts when contracting lines.
+    if block_spaces && a.font != 0 && b.font != 0 && a.font != b.font && !font_neutral {
         return false;
     }
     a.same_orientation(b)
@@ -609,5 +613,30 @@ mod tests {
         assert_eq!(words, ["MODE", "to"]);
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].text, "MODE to");
+    }
+
+    /// A phrase that changes font mid-line (redp5110_sampled.pdf p. 8: the
+    /// parentheses in Helvetica, `WRKFCNUSG` in BookMasterGothic-Bold, the
+    /// runs touching). docling-parse >= 7.21 (#351) contracts
+    /// lines by geometry alone, so the line is one cell with no space at the
+    /// font changes; word cells keep the font as a boundary.
+    #[test]
+    fn font_change_does_not_split_a_line_but_splits_words() {
+        let in_font = |ch, l, r, font| Glyph {
+            font,
+            ..glyph(ch, l, r)
+        };
+        let glyphs = [
+            in_font('(', 100.0, 103.0, 1),
+            in_font('W', 103.0, 110.0, 2),
+            in_font('R', 110.0, 116.0, 2),
+            in_font('K', 116.0, 122.0, 2),
+            in_font(')', 122.0, 125.0, 1),
+        ];
+        let (lines, words) = line_and_word_cells(&glyphs, 792.0, true);
+        let lines: Vec<&str> = lines.iter().map(|c| c.text.as_str()).collect();
+        assert_eq!(lines, ["(WRK)"]);
+        let words: Vec<&str> = words.iter().map(|w| w.text.as_str()).collect();
+        assert_eq!(words, ["(", "WRK", ")"]);
     }
 }
