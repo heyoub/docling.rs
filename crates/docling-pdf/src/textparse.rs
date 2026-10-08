@@ -1299,8 +1299,9 @@ pub fn pdf_text_pages(bytes: &[u8]) -> Vec<crate::pdfium_backend::PdfPage> {
 /// same box. Both cells of such a pair are paint, not text.
 ///
 /// Containment (not mere overlap) keeps this narrow: adjacent words touch but
-/// never contain each other, and a same-text near-duplicate (double-draw faux
-/// bold) is left alone for the sanitizer's usual handling. Applied on the
+/// never contain each other, a same-text near-duplicate (double-draw faux
+/// bold) is left alone for the sanitizer's usual handling, and a blank cell
+/// (a space glyph, no ink) never counts. Applied on the
 /// flat/browser path only — the ML pipeline's text layer is byte-pinned by the
 /// PDF corpus, and there the layout model already sinks logo marks into
 /// `picture` regions.
@@ -1308,7 +1309,15 @@ fn drop_overpainted_cells(cells: &mut Vec<crate::pdfium_backend::TextCell>) {
     let mut paint = vec![false; cells.len()];
     for i in 0..cells.len() {
         for j in 0..cells.len() {
-            if i == j || cells[i].text == cells[j].text {
+            // A blank cell has no ink, so it is never paint: a space glyph left
+            // inside a line cell that merged across it (a checkbox glyph, a
+            // space, then the option text in another font) is not artwork, and
+            // pairing it would drop the whole line.
+            if i == j
+                || cells[i].text == cells[j].text
+                || cells[i].text.trim().is_empty()
+                || cells[j].text.trim().is_empty()
+            {
                 continue;
             }
             let (a, b) = (&cells[i], &cells[j]);
@@ -3011,6 +3020,26 @@ mod overpainted {
         ];
         super::drop_overpainted_cells(&mut cells);
         assert_eq!(cells.len(), 4);
+    }
+
+    /// table_mislabeled_as_picture.pdf p. 1: a checkbox glyph, a space glyph
+    /// and the option text in another font make one line cell, and the space
+    /// glyph's own blank cell lies inside it. A blank cell is not paint; the
+    /// line stays.
+    #[test]
+    fn a_blank_cell_inside_a_line_is_not_paint() {
+        let mut cells = vec![
+            cell(" ", 158.48, 54.11, 162.08, 65.37),
+            cell(
+                "\u{84} They work in parallel to State funded",
+                148.77,
+                51.76,
+                478.68,
+                66.19,
+            ),
+        ];
+        super::drop_overpainted_cells(&mut cells);
+        assert_eq!(cells.len(), 2, "cells: {cells:?}");
     }
 }
 
