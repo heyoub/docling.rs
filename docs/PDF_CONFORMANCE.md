@@ -620,7 +620,9 @@ silently skipped.
 Its cells feed the ported **docling-parse line sanitizer** (`dp_lines.rs`, from
 `src/parse/page_item_sanitators/cells.h`): a 3-pass corner-distance contraction
 (LTR → RTL → LTR-reverse) with `merge_with` space insertion (one space when the
-gap exceeds 0.33×avg-char-width, plus literal space glyphs), `enforce_same_font`,
+gap exceeds 0.33×avg-char-width, plus literal space glyphs), `enforce_same_font`
+for word cells only (docling-parse ≥ 7.21, docling-parse#351, contracts lines without it, so a
+phrase that changes font mid-line stays one cell: `(WRKFCNUSG)`, not `( WRKFCNUSG )`),
 ligature recomposition, and loose-box geometry, with the Euclidean corner gap on the
 parser's boxes (matching docling).
 

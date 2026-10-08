@@ -957,8 +957,9 @@ pub(crate) struct Glyph {
     pub(crate) lr: f32,
     pub(crate) lt: f32,
     /// Hash of the PDF font name + flags (0 when not fetched). The sanitizer uses
-    /// it for docling-parse's `enforce_same_font` (keeps a bold label and regular
-    /// value as separate line cells, e.g. `LABEL : value`).
+    /// it for docling-parse's `enforce_same_font` in word cells only (a bold
+    /// label and its regular value stay separate words); line cells ignore it,
+    /// as docling-parse >= 7.21 does (docling-parse#351).
     pub(crate) font: u64,
     /// The loose box as the text matrix actually lays it — corners
     /// bottom-left, bottom-right, top-right, top-left as `[x0, y0, … x3, y3]`

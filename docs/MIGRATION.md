@@ -538,7 +538,8 @@ These are deliberate or unavoidable divergences, not bugs.
      page lines up with the rendered bitmap and docling's `prov` boxes. It is
      the only text layer (pdfium's text page is gone). Its cells feed a port of
      docling-parse's line sanitizer (`dp_lines.rs`): 3-pass corner-distance
-     contraction with gap-proportional space insertion, `enforce_same_font`,
+     contraction with gap-proportional space insertion, `enforce_same_font`
+     for word cells only (docling-parse ≥ 7.21 dropped it for lines, docling-parse#351),
      ligature recomposition, loose-box geometry. Plus docling's markdown escaping,
      docling-parse's typographic-punctuation table (every curly quote → `'`),
      wrap dehyphenation, paragraph-continuation merging, docling's rule-based
